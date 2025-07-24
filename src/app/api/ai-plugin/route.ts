@@ -11,21 +11,22 @@ export async function GET() {
         },
         servers: [
             {
-                url: "https://agent-next-boilerplate.vercel.app/"
+                url: "https://solana-wallet-tracker-agent.vercel.app/"
             }
         ],
         "x-mb": {
-            "account-id": ACCOUNT_ID,
-            email: "youremail@gmail.com",
-            assistant: {
-                name: "Blockchain Assistant",
-                description: "An assistant that analyzes Solana addresses and retrieves related accounts and transaction counts.",
-                instructions: "Use the /api/tools/solana-address-analysis endpoint to analyze a Solana address and retrieve related accounts.",
-                tools: [],
-                image: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/bitte.svg`,
-                repo: 'https://github.com/BitteProtocol/agent-next-boilerplate',
-                categories: ["DeFi", "DAO", "Social"],
-                chainIds: [1, 8453]
+            "account-id": "sainthiago.near",
+            "email": "ruisantiagomr@gmail.com",
+            "assistant": {
+                "name": "solana-wallet-tracker-agent",
+                "description": "This agent is designed to give you a summary of a given Solana wallet address.",
+                "instructions": "You will be given a Solana wallet address and you will need to track the transactions of that address.",
+                "tools": [{ "type": "generate-transaction" }, { "type": "submit-query" }],
+                "repo": "https://github.com/sainthiago/solana-wallet-tracker-agent",
+                "image": "https://imgur.com/gallery/solana-logo-07sYm5z",
+                "categories": ["solana", "wallet", "tracker", "agent"],
+                "chainIds": [1, 8453],
+                "version": "0.1.0"
             }
         },
         paths: {
