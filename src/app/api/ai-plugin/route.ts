@@ -16,17 +16,16 @@ export async function GET() {
         ],
         "x-mb": {
             "account-id": "sainthiago.near",
-            "email": "ruisantiagomr@gmail.com",
-            "assistant": {
-                "name": "solana-wallet-tracker-agent",
-                "description": "This agent is designed to give you a summary of a given Solana wallet address.",
-                "instructions": "You will be given a Solana wallet address and you will need to track the transactions of that address.",
-                "tools": [{ "type": "generate-transaction" }, { "type": "submit-query" }],
-                "repo": "https://github.com/sainthiago/solana-wallet-tracker-agent",
-                "image": "https://imgur.com/gallery/solana-logo-07sYm5z",
-                "categories": ["solana", "wallet", "tracker", "agent"],
-                "chainIds": [1, 8453],
-                "version": "0.1.0"
+            email: "ruisantiagomr@gmail.com",
+            assistant: {
+                name: "solana-wallet-tracker-agent",
+                description: "This agent is designed to give you a summary of a given Solana wallet address.",
+                instructions: "You will be given a Solana wallet address and you will need to track the transactions of that address.",
+                tools: [{ "type": "submit-query" }],
+                image: `https://i.imgur.com/2SaKsd3.png`,
+                repo: "https://github.com/sainthiago/solana-wallet-tracker-agent",
+                categories: ["solana", "wallet", "tracker", "agent"],
+                chainIds: [900]
             }
         },
         paths: {
