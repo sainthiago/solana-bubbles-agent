@@ -1,0 +1,145 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Solana Address Analysis Agent",
+        "description": "API for analyzing Solana addresses and retrieving related accounts.",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "https://solana-wallet-tracker-agent.vercel.app/"
+        }
+    ],
+    "x-mb": {
+        "account-id": "sainthiago.near",
+        "email": "ruisantiagomr@gmail.com",
+        "assistant": {
+            "name": "solana-wallet-tracker-agent",
+            "description": "This agent is designed to give you a summary of a given Solana wallet address.",
+            "instructions": "You will be given a Solana wallet address and you will need to track the transactions of that address.",
+            "tools": [{ "type": "submit-query" }],
+            "image": "https://i.imgur.com/2SaKsd3.png",
+            "repo": "https://github.com/sainthiago/solana-wallet-tracker-agent",
+            "categories": ["solana", "wallet", "tracker", "agent"],
+            "chainIds": [900]
+        }
+    },
+    "paths": {
+        "/api/tools/solana-address-analysis": {
+            "get": {
+                "summary": "Analyze Solana address",
+                "description": "Analyzes a Solana address to find related accounts, transaction counts, and transaction types ordered by interaction frequency.",
+                "operationId": "analyzeSolanaAddress",
+                "parameters": [
+                    {
+                        "name": "address",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "The Solana address to analyze"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "address": {
+                                            "type": "string",
+                                            "description": "The analyzed Solana address"
+                                        },
+                                        "isValid": {
+                                            "type": "boolean",
+                                            "description": "Whether the address is valid"
+                                        },
+                                        "totalTransactions": {
+                                            "type": "number",
+                                            "description": "Total number of transactions for this address"
+                                        },
+                                        "sampledTransactions": {
+                                            "type": "number",
+                                            "description": "Number of transactions actually analyzed (subset of total)"
+                                        },
+                                        "relatedAccounts": {
+                                            "type": "array",
+                                            "description": "List of related accounts ordered by transaction count",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "address": {
+                                                        "type": "string",
+                                                        "description": "The related account address"
+                                                    },
+                                                    "transactionCount": {
+                                                        "type": "number",
+                                                        "description": "Number of transactions with this account"
+                                                    },
+                                                    "lastInteraction": {
+                                                        "type": "string",
+                                                        "description": "ISO timestamp of last interaction"
+                                                    },
+                                                    "transactionTypes": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "string"
+                                                        },
+                                                        "description": "Types of transactions (e.g., 'Asset Transfer', 'Complex Transaction')"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "error": {
+                                            "type": "string",
+                                            "description": "Error message if analysis failed"
+                                        },
+                                        "debug": {
+                                            "type": "object",
+                                            "description": "Debug information (temporary)"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "string",
+                                            "description": "Error message"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "string",
+                                            "description": "Error message"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+} 
