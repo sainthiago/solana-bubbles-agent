@@ -26,7 +26,7 @@ export async function GET() {
                 repo: 'https://github.com/BitteProtocol/agent-next-boilerplate',
                 categories: ["DeFi", "DAO", "Social"],
                 chainIds: [1, 8453]
-            },
+            }
         },
         paths: {
             "/api/tools/solana-address-analysis": {
