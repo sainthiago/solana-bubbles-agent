@@ -344,7 +344,6 @@ async function analyzeAddress(address: string): Promise<SolanaAnalysisResponse> 
                 // Sort by raw lamports for accurate numerical comparison
                 return (b.totalSolFlowLamports || 0) - (a.totalSolFlowLamports || 0);
             })
-            .slice(0, 25) // Limit to top 25
             .map(account => {
                 const { totalSolFlowLamports, ...cleanAccount } = account;
                 return {
