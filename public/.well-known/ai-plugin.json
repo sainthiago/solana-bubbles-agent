@@ -18,7 +18,7 @@
             "description": "This agent is designed to give you a summary of a given Solana wallet address.",
             "instructions": "You will be given a Solana wallet address and you will need to track the transactions of that address.",
             "tools": [{ "type": "submit-query" }],
-            "image": "/solana.png",
+            "image": "https://solana-wallet-tracker-agent.vercel.app/solana.png",
             "repo": "https://github.com/sainthiago/solana-wallet-tracker-agent",
             "categories": ["solana", "wallet", "tracker", "agent"],
             "chainIds": [900]
