@@ -1,4 +1,4 @@
-
+{
   "x-mb": {
     "account-id": "sainthiago.near",
     "email": "ruisantiagomr@gmail.com",
@@ -13,4 +13,5 @@
     "chainIds": [1,8453],
     "version": "0.1.0"
   } 
+}
 }
