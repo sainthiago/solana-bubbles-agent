@@ -15,7 +15,7 @@ export async function GET() {
             }
         ],
         "x-mb": {
-            "account-id": "sainthiago.near",
+            "account-id": ACCOUNT_ID,
             email: "ruisantiagomr@gmail.com",
             assistant: {
                 name: "SOL Wallet Tracker",

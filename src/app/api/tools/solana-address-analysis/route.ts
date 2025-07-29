@@ -34,6 +34,17 @@ interface SolanaAnalysisResponse {
     error?: string;
 }
 
+interface CacheStatsResponse {
+    totalEntries: number;
+    maxSize: number;
+    ttlMinutes: number;
+    entries: Array<{
+        address: string;
+        ageMinutes: number;
+        expiresInMinutes: number;
+    }>;
+}
+
 function isValidSolanaAddress(address: string): boolean {
     try {
         new PublicKey(address);
@@ -162,7 +173,7 @@ async function analyzeAddress(address: string): Promise<SolanaAnalysisResponse> 
     console.log(`Cache miss - analyzing address: ${address}`);
 
     let connection: Connection;
-    let rpcUrl = process.env.HELIUS_RPC_URL || FALLBACK_RPCS[0];
+    const rpcUrl = process.env.HELIUS_RPC_URL || FALLBACK_RPCS[0];
 
     try {
         connection = new Connection(rpcUrl, 'confirmed');
@@ -316,11 +327,12 @@ async function analyzeAddress(address: string): Promise<SolanaAnalysisResponse> 
                         }
                     }
                 }
-            } catch (error: any) {
+            } catch (error) {
                 console.warn(`Error processing batch ${i}:`, error);
                 
                 // Handle rate limiting with exponential backoff
-                if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
                     const backoffMs = isHelius ? 5000 : 3000; // 5s for Helius, 3s for others
                     console.log(`Rate limited, waiting ${backoffMs}ms before retry...`);
                     await new Promise(resolve => setTimeout(resolve, backoffMs));
@@ -393,7 +405,7 @@ async function analyzeAddress(address: string): Promise<SolanaAnalysisResponse> 
     }
 }
 
-export async function GET(request: Request): Promise<NextResponse<SolanaAnalysisResponse | any>> {
+export async function GET(request: Request): Promise<NextResponse<SolanaAnalysisResponse | CacheStatsResponse>> {
     try {
         const { searchParams } = new URL(request.url);
         const address = searchParams.get('address');
