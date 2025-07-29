@@ -1,8 +1,21 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import { NextResponse } from 'next/server';
 
+// Cache interface
+interface CacheEntry {
+    data: SolanaAnalysisResponse;
+    timestamp: number;
+    ttl: number; // Time to live in milliseconds
+}
 
-// Fallback RPCs if Helius is not configured
+// In-memory cache
+const analysisCache = new Map<string, CacheEntry>();
+
+// Cache configuration
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
+const MAX_CACHE_SIZE = 1000; // Maximum number of cached entries
+
+// Fallback RPCs
 const FALLBACK_RPCS = [
     'https://rpc.ankr.com/solana',
     'https://api.mainnet-beta.solana.com',
@@ -11,20 +24,13 @@ const FALLBACK_RPCS = [
 
 interface RelatedAccount {
     address: string;
-    transactionCount: number;
-    lastInteraction: string;
-    transactionTypes: string[];
-    totalSolFlowLamports?: number; // Keep raw lamports for sorting
-    totalSolFlow?: string; // Formatted SOL amount
-    totalTokenInteractions?: number; // Track token interactions
+    totalSolVolume: string; // Total volume (SOL + tokens converted to SOL equivalent)
 }
 
 interface SolanaAnalysisResponse {
     address: string;
     isValid: boolean;
-    totalTransactions?: number;
-    sampledTransactions?: number;
-    relatedAccounts?: RelatedAccount[];
+    relatedAccounts: RelatedAccount[];
     error?: string;
 }
 
@@ -37,22 +43,104 @@ function isValidSolanaAddress(address: string): boolean {
     }
 }
 
-// Add delay function for rate limiting
-function delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+// Common token mint addresses and their approximate SOL conversion rates
+const TOKEN_TO_SOL_RATES: { [mint: string]: number } = {
+    'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': 0.004, // USDC (1 USDC ≈ 0.004 SOL)
+    'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': 0.004, // USDT 
+    'So11111111111111111111111111111111111111112': 1.0,   // Wrapped SOL
+    'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So': 1.0,   // mSOL (≈ 1 SOL)
+    'bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1': 1.0,   // bSOL
+    'JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB': 0.0035, // JUP token
+    '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs': 0.15, // ETH (1 ETH ≈ 0.15 SOL, updated)
+    'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263': 0.00000006, // BONK (updated)
+    'WENWENvqqNya429ubCdR81ZmD69brwQaaBYY6p3LCpk': 0.000001, // WEN
+    'hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux': 0.000003, // HNT
+    'MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5': 0.0001, // MEW
+    'MangoCzJ36AjZyKwVj3VnYU4GTonjfVEnJmvvWaxLac': 0.0001, // MNGO
+    'SHDWyBxihqiCj6YekG2GUr7wqKLeLAMK1gHZck9pL6y': 0.000002, // SHDW
+    'A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM': 0.000001, // USDCet
+};
+
+function formatSolAmount(solValue: number): string {
+    if (solValue === 0) return '0 SOL';
+    if (solValue < 0.001) return solValue.toFixed(6) + ' SOL';
+    if (solValue < 1) return solValue.toFixed(3) + ' SOL';
+    if (solValue < 1000) return solValue.toFixed(2) + ' SOL';
+    return solValue.toFixed(0) + ' SOL';
 }
 
-// Helper function to format lamports to readable SOL
-function formatSolAmount(lamports: number): string {
-    const sol = lamports / 1e9;
+function getTokenValueInSol(mint: string, tokenAmount: number, decimals: number): number {
+    const actualAmount = tokenAmount / Math.pow(10, decimals);
+    const solRate = TOKEN_TO_SOL_RATES[mint] || 0; // Default to 0 for unknown tokens
+    return actualAmount * solRate;
+}
 
-    if (sol === 0) return '0 SOL';
-    if (sol < 0.000001) return '<0.000001 SOL'; // Very small amounts
-    if (sol < 0.001) return sol.toFixed(6) + ' SOL'; // Show 6 decimals for small amounts
-    if (sol < 1) return sol.toFixed(3) + ' SOL'; // Show 3 decimals for amounts < 1 SOL
-    if (sol < 1000) return sol.toFixed(2) + ' SOL'; // Show 2 decimals for normal amounts
+// Cache utility functions
+function getCacheKey(address: string): string {
+    return `analysis:${address}`;
+}
 
-    return sol.toFixed(0) + ' SOL'; // Whole numbers for large amounts
+function getCachedAnalysis(address: string): SolanaAnalysisResponse | null {
+    const key = getCacheKey(address);
+    const entry = analysisCache.get(key);
+    
+    if (!entry) return null;
+    
+    const now = Date.now();
+    const isExpired = now - entry.timestamp > entry.ttl;
+    
+    if (isExpired) {
+        analysisCache.delete(key);
+        return null;
+    }
+    
+    console.log(`Cache hit for address: ${address}`);
+    return entry.data;
+}
+
+function setCachedAnalysis(address: string, data: SolanaAnalysisResponse): void {
+    const key = getCacheKey(address);
+    const now = Date.now();
+    
+    // Clean up expired entries and manage cache size
+    cleanupCache();
+    
+    analysisCache.set(key, {
+        data,
+        timestamp: now,
+        ttl: CACHE_TTL
+    });
+    
+    console.log(`Cached analysis for address: ${address}`);
+}
+
+function cleanupCache(): void {
+    const now = Date.now();
+    const keysToDelete: string[] = [];
+    
+    // Remove expired entries
+    for (const [key, entry] of analysisCache.entries()) {
+        if (now - entry.timestamp > entry.ttl) {
+            keysToDelete.push(key);
+        }
+    }
+    
+    keysToDelete.forEach(key => analysisCache.delete(key));
+    
+    // If cache is still too large, remove oldest entries
+    if (analysisCache.size > MAX_CACHE_SIZE) {
+        const entries = Array.from(analysisCache.entries());
+        entries.sort((a, b) => a[1].timestamp - b[1].timestamp); // Sort by timestamp (oldest first)
+        
+        const entriesToRemove = entries.slice(0, analysisCache.size - MAX_CACHE_SIZE);
+        entriesToRemove.forEach(([key]) => analysisCache.delete(key));
+        
+        console.log(`Cleaned up ${entriesToRemove.length} old cache entries`);
+    }
+    
+    if (keysToDelete.length > 0) {
+        console.log(`Cleaned up ${keysToDelete.length} expired cache entries`);
+    }
 }
 
 async function analyzeAddress(address: string): Promise<SolanaAnalysisResponse> {
@@ -60,98 +148,62 @@ async function analyzeAddress(address: string): Promise<SolanaAnalysisResponse> 
         return {
             address,
             isValid: false,
+            relatedAccounts: [],
             error: 'Invalid Solana address format'
         };
     }
 
-    let connection: Connection;
-    let rpcUrl: string;
-
-    // Determine which RPC to use
-    if (process.env.HELIUS_RPC_URL) {
-        rpcUrl = process.env.HELIUS_RPC_URL;
-        console.log('Using configured Helius RPC');
-    } else {
-        rpcUrl = FALLBACK_RPCS[0]; // Use Ankr
-        console.log('Using Ankr fallback RPC');
+    // Check cache first
+    const cachedResult = getCachedAnalysis(address);
+    if (cachedResult) {
+        return cachedResult;
     }
 
+    console.log(`Cache miss - analyzing address: ${address}`);
+
+    let connection: Connection;
+    let rpcUrl = process.env.HELIUS_RPC_URL || FALLBACK_RPCS[0];
+
     try {
-        console.log('Connecting to RPC:', rpcUrl);
         connection = new Connection(rpcUrl, 'confirmed');
         const publicKey = new PublicKey(address);
 
-        // Test the connection first
-        try {
-            await connection.getBalance(publicKey);
-            console.log('RPC connection successful');
-        } catch (connectionError) {
-            console.error('RPC connection failed, trying next fallback:', connectionError);
-            // Try the next fallback RPC
-            rpcUrl = FALLBACK_RPCS[1]; // Standard Solana RPC
-            console.log('Switching to standard Solana RPC:', rpcUrl);
-            connection = new Connection(rpcUrl, 'confirmed');
-        }
-
-        // Get recent transaction signatures
+        // Get transaction signatures (limited for rate limits)
         const signatures = await connection.getSignaturesForAddress(publicKey, { limit: 50 });
-
-        // Get the actual total number of transactions (this might be more than our sample)
-        let actualTotalTransactions = signatures.length;
-
-        // If we hit our limit, try to get a rough estimate of total transactions
-        if (signatures.length === 50) {
-            try {
-                // Get more signatures to estimate total (up to 1000)
-                const allSignatures = await connection.getSignaturesForAddress(publicKey, { limit: 1000 });
-                actualTotalTransactions = allSignatures.length;
-                if (allSignatures.length === 1000) {
-                    actualTotalTransactions = 1000; // Cap at 1000+ indicator
-                }
-            } catch (error) {
-                console.warn('Could not get full transaction count:', error);
-                actualTotalTransactions = signatures.length; // Fall back to sample size
-            }
-        }
 
         if (signatures.length === 0) {
             return {
                 address,
                 isValid: true,
-                totalTransactions: actualTotalTransactions,
-                sampledTransactions: 0,
                 relatedAccounts: []
             };
         }
 
-        // Analyze transactions to find related accounts
-        const relatedAccountsMap = new Map<string, RelatedAccount>();
+        // Track total volume (SOL + tokens converted to SOL) per account AND account interactions
+        const accountVolumes = new Map<string, number>(); // Will store SOL-equivalent values
+        const accountInteractions = new Map<string, number>();
 
-
-        // Process transactions in batches (use very conservative settings even for Helius due to rate limits)
+        // Use conservative settings for Helius to avoid 429 errors
         const isHelius = rpcUrl.includes('helius');
-        const batchSize = 1; // Use single transactions for all RPCs to avoid rate limits
-        const processedTransactions = Math.min(signatures.length, isHelius ? 15 : 8); // Fewer transactions
+        const batchSize = isHelius ? 3 : 5; // Much smaller batches for Helius
+        const maxTransactions = Math.min(signatures.length, isHelius ? 15 : 25);
 
-        console.log(`Processing ${processedTransactions} transactions with batch size ${batchSize} (Helius: ${isHelius})`);
-
-        for (let i = 0; i < processedTransactions; i += batchSize) {
+        for (let i = 0; i < maxTransactions; i += batchSize) {
             const batch = signatures.slice(i, i + batchSize);
             const txSignatures = batch.map(sig => sig.signature);
 
             try {
-                // Use longer delays for all RPCs to respect rate limits
+                // Add delay before each batch to respect rate limits
                 if (i > 0) {
-                    const delayTime = isHelius ? 1500 : 3000; // 1.5s for Helius, 3s for others
-                    console.log(`Waiting ${delayTime}ms before next batch...`);
-                    await delay(delayTime);
+                    const delayMs = isHelius ? 2000 : 1000; // 2s for Helius, 1s for others
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
                 }
 
-                // For Helius free plans, make individual requests instead of batch requests
-                const transactions = [];
-
-                if (isHelius && batchSize === 1) {
-                    // Individual requests for Helius free plan
+                let transactions;
+                
+                if (isHelius) {
+                    // For Helius free plan, make individual requests (no batch support)
+                    transactions = [];
                     for (const txSig of txSignatures) {
                         try {
                             const tx = await connection.getParsedTransaction(txSig, {
@@ -160,115 +212,71 @@ async function analyzeAddress(address: string): Promise<SolanaAnalysisResponse> 
                             });
                             transactions.push(tx);
                             // Small delay between individual requests
-                            await delay(200);
+                            await new Promise(resolve => setTimeout(resolve, 300));
                         } catch (txError) {
                             console.warn(`Failed to fetch individual transaction ${txSig}:`, txError);
                             transactions.push(null);
                         }
                     }
                 } else {
-                    // Batch request for paid plans
-                    const batchResult = await connection.getParsedTransactions(txSignatures, {
+                    // For other RPCs, use batch requests
+                    transactions = await connection.getParsedTransactions(txSignatures, {
                         maxSupportedTransactionVersion: 0,
                         commitment: 'confirmed'
                     });
-                    transactions.push(...batchResult);
                 }
 
-                console.log(`Fetched batch ${i}: ${transactions.length} transactions`);
+                for (const tx of transactions) {
+                    if (!tx || !tx.meta) continue;
 
-                for (let j = 0; j < transactions.length; j++) {
-                    const tx = transactions[j];
-                    const signature = batch[j];
+                    const accountKeys = tx.transaction?.message?.accountKeys;
+                    if (!accountKeys) continue;
 
-                    if (!tx || !tx.meta) {
-                        console.log(`Skipping transaction ${j}: no transaction or meta data`);
-                        continue;
-                    }
+                    // Track ALL accounts that appear in this transaction
+                    for (let k = 0; k < accountKeys.length; k++) {
+                        const accountAddress = accountKeys[k].pubkey.toString();
 
-                    console.log(`Processing transaction: ${signature.signature}`);
+                        // Skip system accounts and the queried address itself
+                        if (accountAddress === address ||
+                            accountAddress === '11111111111111111111111111111111' ||
+                            accountAddress === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' ||
+                            accountAddress === 'ComputeBudget111111111111111111111111111111' ||
+                            accountAddress === 'SysvarRent111111111111111111111111111111111' ||
+                            accountAddress === 'SysvarClock111111111111111111111111111111111') {
+                            continue;
+                        }
 
-                    // Method 1: Analyze SOL balance changes (preBalances vs postBalances)
-                    if (tx.meta.preBalances && tx.meta.postBalances && tx.transaction?.message?.accountKeys) {
-                        const accountKeys = tx.transaction.message.accountKeys;
+                        // Count interactions
+                        const currentInteractions = accountInteractions.get(accountAddress) || 0;
+                        accountInteractions.set(accountAddress, currentInteractions + 1);
 
-                        for (let k = 0; k < accountKeys.length; k++) {
-                            const accountKey = accountKeys[k];
-                            const accountAddress = accountKey.pubkey.toString();
-
-                            // Skip system accounts and the queried address itself
-                            if (accountAddress === address ||
-                                accountAddress === '11111111111111111111111111111111' ||
-                                accountAddress === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' ||
-                                accountAddress === 'ComputeBudget111111111111111111111111111111') {
-                                continue;
-                            }
-
+                        // Track SOL volume if there are balance changes
+                        if (tx.meta.preBalances && tx.meta.postBalances && k < tx.meta.preBalances.length && k < tx.meta.postBalances.length) {
                             const preBalance = tx.meta.preBalances[k] || 0;
                             const postBalance = tx.meta.postBalances[k] || 0;
-                            const balanceChange = postBalance - preBalance;
+                            const balanceChange = Math.abs(postBalance - preBalance);
 
-                            // Only include accounts that had balance changes
-                            if (balanceChange !== 0) {
-
-
-                                if (!relatedAccountsMap.has(accountAddress)) {
-                                    relatedAccountsMap.set(accountAddress, {
-                                        address: accountAddress,
-                                        transactionCount: 0,
-                                        lastInteraction: signature.blockTime ? new Date(signature.blockTime * 1000).toISOString() : 'Unknown',
-                                        transactionTypes: [],
-                                        totalSolFlowLamports: 0, // Initialize raw lamports
-                                        totalSolFlow: '0 SOL', // Initialize formatted SOL
-                                        totalTokenInteractions: 0
-                                    });
-                                }
-
-                                const relatedAccount = relatedAccountsMap.get(accountAddress)!;
-                                relatedAccount.transactionCount++;
-                                relatedAccount.totalSolFlowLamports = (relatedAccount.totalSolFlowLamports || 0) + Math.abs(balanceChange);
-                                // Don't format here - we'll format the total accumulated amount later
-
-                                // Update last interaction
-                                if (signature.blockTime) {
-                                    const currentTime = new Date(signature.blockTime * 1000).toISOString();
-                                    if (currentTime > relatedAccount.lastInteraction || relatedAccount.lastInteraction === 'Unknown') {
-                                        relatedAccount.lastInteraction = currentTime;
-                                    }
-                                }
-
-                                // Determine transaction type based on balance change
-                                if (balanceChange > 0) {
-                                    if (!relatedAccount.transactionTypes.includes('SOL Inflow')) {
-                                        relatedAccount.transactionTypes.push('SOL Inflow');
-                                    }
-                                } else {
-                                    if (!relatedAccount.transactionTypes.includes('SOL Outflow')) {
-                                        relatedAccount.transactionTypes.push('SOL Outflow');
-                                    }
-                                }
-
-                                console.log(`Found SOL balance change: ${accountAddress} (${balanceChange / 1e9} SOL)`);
+                            if (balanceChange > 0) {
+                                const currentVolume = accountVolumes.get(accountAddress) || 0;
+                                const solValue = balanceChange / 1e9; // Convert lamports to SOL
+                                accountVolumes.set(accountAddress, currentVolume + solValue);
                             }
                         }
                     }
 
-                    // Method 2: Analyze token balance changes
+                    // Track token balance changes and convert to SOL value
                     if (tx.meta.preTokenBalances && tx.meta.postTokenBalances) {
-                        const preTokenBalances = tx.meta.preTokenBalances;
-                        const postTokenBalances = tx.meta.postTokenBalances;
-
                         // Create maps for easier lookup
                         const preTokenMap = new Map();
                         const postTokenMap = new Map();
-
-                        preTokenBalances.forEach(balance => {
+                        
+                        tx.meta.preTokenBalances.forEach(balance => {
                             if (balance.owner && balance.mint) {
                                 preTokenMap.set(`${balance.owner}-${balance.mint}`, balance);
                             }
                         });
-
-                        postTokenBalances.forEach(balance => {
+                        
+                        tx.meta.postTokenBalances.forEach(balance => {
                             if (balance.owner && balance.mint) {
                                 postTokenMap.set(`${balance.owner}-${balance.mint}`, balance);
                             }
@@ -276,114 +284,152 @@ async function analyzeAddress(address: string): Promise<SolanaAnalysisResponse> 
 
                         // Check for token balance changes
                         const allTokenKeys = new Set([...preTokenMap.keys(), ...postTokenMap.keys()]);
-
+                        
                         for (const tokenKey of allTokenKeys) {
                             const [owner, mint] = tokenKey.split('-');
-
+                            
                             if (owner === address) continue; // Skip the queried address
-
+                            
                             const preBalance = preTokenMap.get(tokenKey);
                             const postBalance = postTokenMap.get(tokenKey);
-
-                            const preAmount = preBalance?.uiTokenAmount?.uiAmount || 0;
-                            const postAmount = postBalance?.uiTokenAmount?.uiAmount || 0;
-
-                            if (preAmount !== postAmount) {
-
-
-                                if (!relatedAccountsMap.has(owner)) {
-                                    relatedAccountsMap.set(owner, {
-                                        address: owner,
-                                        transactionCount: 0,
-                                        lastInteraction: signature.blockTime ? new Date(signature.blockTime * 1000).toISOString() : 'Unknown',
-                                        transactionTypes: [],
-                                        totalSolFlowLamports: 0, // Initialize raw lamports
-                                        totalSolFlow: '0 SOL', // Initialize formatted SOL
-                                        totalTokenInteractions: 0
-                                    });
+                            
+                            const preAmount = preBalance?.uiTokenAmount?.amount || '0';
+                            const postAmount = postBalance?.uiTokenAmount?.amount || '0';
+                            const decimals = preBalance?.uiTokenAmount?.decimals || postBalance?.uiTokenAmount?.decimals || 6;
+                            
+                            const preNum = parseFloat(preAmount);
+                            const postNum = parseFloat(postAmount);
+                            const tokenChange = Math.abs(postNum - preNum);
+                            
+                            if (tokenChange > 0) {
+                                // Count interactions
+                                const currentInteractions = accountInteractions.get(owner) || 0;
+                                accountInteractions.set(owner, currentInteractions + 1);
+                                
+                                // Convert token value to SOL and add to volume
+                                const tokenValueInSol = getTokenValueInSol(mint, tokenChange, decimals);
+                                if (tokenValueInSol > 0) {
+                                    const currentVolume = accountVolumes.get(owner) || 0;
+                                    accountVolumes.set(owner, currentVolume + tokenValueInSol);
                                 }
-
-                                const relatedAccount = relatedAccountsMap.get(owner)!;
-                                relatedAccount.transactionCount++;
-                                relatedAccount.totalTokenInteractions = (relatedAccount.totalTokenInteractions || 0) + 1;
-
-                                // Update last interaction
-                                if (signature.blockTime) {
-                                    const currentTime = new Date(signature.blockTime * 1000).toISOString();
-                                    if (currentTime > relatedAccount.lastInteraction || relatedAccount.lastInteraction === 'Unknown') {
-                                        relatedAccount.lastInteraction = currentTime;
-                                    }
-                                }
-
-                                if (!relatedAccount.transactionTypes.includes('Token Transfer')) {
-                                    relatedAccount.transactionTypes.push('Token Transfer');
-                                }
-
-                                console.log(`Found token balance change: ${owner} for mint ${mint}`);
                             }
                         }
                     }
                 }
-
-            } catch (batchError) {
-                console.error(`Error processing batch ${i}-${i + batchSize}:`, batchError);
-                await delay(rpcUrl.includes('helius') ? 1000 : 3000); // 3 second delay after error for free RPC
+            } catch (error: any) {
+                console.warn(`Error processing batch ${i}:`, error);
+                
+                // Handle rate limiting with exponential backoff
+                if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
+                    const backoffMs = isHelius ? 5000 : 3000; // 5s for Helius, 3s for others
+                    console.log(`Rate limited, waiting ${backoffMs}ms before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, backoffMs));
+                }
                 continue;
             }
         }
 
-        console.log(`Found ${relatedAccountsMap.size} related accounts`);
+        // Combine all unique accounts from both interactions and volumes
+        const allAccounts = new Set([
+            ...accountInteractions.keys(),
+            ...accountVolumes.keys()
+        ]);
 
-        // Convert map to array, sort first, then format SOL amounts and clean up
-        const relatedAccounts = Array.from(relatedAccountsMap.values())
-            .sort((a, b) => {
-                // Sort by transaction count first, then by SOL flow
-                if (b.transactionCount !== a.transactionCount) {
-                    return b.transactionCount - a.transactionCount;
-                }
-                // Sort by raw lamports for accurate numerical comparison
-                return (b.totalSolFlowLamports || 0) - (a.totalSolFlowLamports || 0);
-            })
-            .map(account => {
-                const { totalSolFlowLamports, ...cleanAccount } = account;
+        // Convert to sorted array - return ALL related accounts
+        const relatedAccounts: RelatedAccount[] = Array.from(allAccounts)
+            .map(accountAddress => {
+                const volumeInSol = accountVolumes.get(accountAddress) || 0; // Already in SOL equivalent
+                const interactions = accountInteractions.get(accountAddress) || 0;
                 return {
-                    ...cleanAccount,
-                    totalSolFlow: formatSolAmount(totalSolFlowLamports || 0) // Format accumulated SOL flow
+                    address: accountAddress,
+                    totalSolVolume: formatSolAmount(volumeInSol),
+                    volumeValue: volumeInSol, // For sorting
+                    interactions: interactions // For sorting
                 };
-            });
+            })
+            .sort((a, b) => {
+                // Sort by total volume (SOL + token equivalent) first, then by interaction count
+                if (b.volumeValue !== a.volumeValue) {
+                    return b.volumeValue - a.volumeValue;
+                }
+                return b.interactions - a.interactions;
+            })
+            .map(({ address, totalSolVolume }) => ({
+                address,
+                totalSolVolume
+            }));
 
-        return {
+        const result = {
             address,
             isValid: true,
-            totalTransactions: actualTotalTransactions,
-            sampledTransactions: processedTransactions,
-            relatedAccounts,
+            relatedAccounts
         };
+
+        // Cache the successful result
+        setCachedAnalysis(address, result);
+        
+        return result;
 
     } catch (error) {
         console.error('Error analyzing Solana address:', error);
-        return {
+        const errorResult = {
             address,
             isValid: true,
+            relatedAccounts: [],
             error: `Failed to analyze address: ${error instanceof Error ? error.message : 'Unknown error'}`
         };
+
+        // Cache error results for a shorter time to avoid repeated failures
+        // but don't cache for too long in case it was a temporary issue
+        const shortCacheTime = 60 * 1000; // 1 minute
+        const key = getCacheKey(address);
+        analysisCache.set(key, {
+            data: errorResult,
+            timestamp: Date.now(),
+            ttl: shortCacheTime
+        });
+
+        return errorResult;
     }
 }
 
-export async function GET(request: Request): Promise<NextResponse<SolanaAnalysisResponse>> {
+export async function GET(request: Request): Promise<NextResponse<SolanaAnalysisResponse | any>> {
     try {
         const { searchParams } = new URL(request.url);
         const address = searchParams.get('address');
+        const cacheInfo = searchParams.get('cache');
+
+        // Special endpoint to get cache statistics
+        if (cacheInfo === 'stats') {
+            const now = Date.now();
+            const cacheStats = {
+                totalEntries: analysisCache.size,
+                maxSize: MAX_CACHE_SIZE,
+                ttlMinutes: CACHE_TTL / (60 * 1000),
+                entries: Array.from(analysisCache.entries()).map(([key, entry]) => ({
+                    address: key.replace('analysis:', ''),
+                    ageMinutes: Math.round((now - entry.timestamp) / (60 * 1000)),
+                    expiresInMinutes: Math.round((entry.ttl - (now - entry.timestamp)) / (60 * 1000))
+                }))
+            };
+            return NextResponse.json(cacheStats);
+        }
 
         if (!address) {
             return NextResponse.json({
                 address: '',
                 isValid: false,
+                relatedAccounts: [],
                 error: 'Address parameter is required'
             }, { status: 400 });
         }
 
+        const startTime = Date.now();
         const result = await analyzeAddress(address);
+        const analysisTime = Date.now() - startTime;
+        
+        console.log(`Analysis completed in ${analysisTime}ms for address: ${address}`);
+        
         return NextResponse.json(result);
 
     } catch (error) {
@@ -391,6 +437,7 @@ export async function GET(request: Request): Promise<NextResponse<SolanaAnalysis
         return NextResponse.json({
             address: '',
             isValid: false,
+            relatedAccounts: [],
             error: 'Internal server error'
         }, { status: 500 });
     }

@@ -6,7 +6,7 @@ export async function GET() {
         openapi: "3.0.0",
         info: {
             title: "Solana Address Analysis Agent",
-            description: "API for analyzing Solana addresses and retrieving related accounts.",
+            description: "API for analyzing Solana addresses to find related accounts and their SOL transaction volumes.",
             version: "1.0.0"
         },
         servers: [
@@ -19,8 +19,8 @@ export async function GET() {
             email: "ruisantiagomr@gmail.com",
             assistant: {
                 name: "SOL Wallet Tracker",
-                description: "This agent is designed to give you a summary of a given Solana wallet address.",
-                instructions: "You will be given a Solana wallet address and you will need to track the transactions of that address.",
+                description: "This agent analyzes Solana wallet addresses to find all related accounts and their SOL transaction volumes.",
+                instructions: "When given a Solana wallet address, use the analysis tool to find all related accounts that have interacted with it and show their total SOL volume.",
                 tools: [{ "type": "submit-query" }],
                 image: "https://solana-wallet-tracker-agent.vercel.app/solana.png",
                 repo: "https://github.com/sainthiago/solana-wallet-tracker-agent",
@@ -32,7 +32,7 @@ export async function GET() {
             "/api/tools/solana-address-analysis": {
                 get: {
                     summary: "Analyze Solana address",
-                    description: "Analyzes a Solana address to find related accounts, transaction counts, and transaction types ordered by interaction frequency.",
+                    description: "Analyzes a Solana address to find related accounts and their SOL volume.",
                     operationId: "analyzeSolanaAddress",
                     parameters: [
                         {
@@ -57,54 +57,31 @@ export async function GET() {
                                                 type: "string",
                                                 description: "The analyzed Solana address"
                                             },
-                                            isValid: {
-                                                type: "boolean",
-                                                description: "Whether the address is valid"
-                                            },
-                                            totalTransactions: {
-                                                type: "number",
-                                                description: "Total number of transactions for this address"
-                                            },
-                                            sampledTransactions: {
-                                                type: "number",
-                                                description: "Number of transactions actually analyzed (subset of total)"
-                                            },
-                                            relatedAccounts: {
-                                                type: "array",
-                                                description: "List of related accounts ordered by transaction count",
-                                                items: {
-                                                    type: "object",
-                                                    properties: {
-                                                        address: {
-                                                            type: "string",
-                                                            description: "The related account address"
-                                                        },
-                                                        transactionCount: {
-                                                            type: "number",
-                                                            description: "Number of transactions with this account"
-                                                        },
-                                                        lastInteraction: {
-                                                            type: "string",
-                                                            description: "ISO timestamp of last interaction"
-                                                        },
-                                                        transactionTypes: {
-                                                            type: "array",
-                                                            items: {
-                                                                type: "string"
-                                                            },
-                                                            description: "Types of transactions (e.g., 'Asset Transfer', 'Complex Transaction')"
-                                                        }
-                                                    }
-                                                }
-                                            },
-                                            error: {
-                                                type: "string",
-                                                description: "Error message if analysis failed"
-                                            },
-                                            debug: {
-                                                type: "object",
-                                                description: "Debug information (temporary)"
-                                            }
+                                                                        isValid: {
+                                type: "boolean",
+                                description: "Whether the address is valid"
+                            },
+                            relatedAccounts: {
+                                type: "array",
+                                description: "List of related accounts ordered by SOL volume",
+                                items: {
+                                    type: "object",
+                                    properties: {
+                                        address: {
+                                            type: "string",
+                                            description: "The related account address"
+                                        },
+                                        totalSolVolume: {
+                                            type: "string",
+                                            description: "Total SOL volume with this account (formatted)"
+                                        }
+                                    }
+                                }
+                            },
+                            error: {
+                                type: "string",
+                                description: "Error message if analysis failed"
+                            }
                                         }
                                     }
                                 }
