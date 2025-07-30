@@ -1,132 +1,177 @@
-# Solana Address Analysis Agent
+# 🫧 Solana Bubbles Agent
 
-## Overview
+> **Discover the hidden connections in the Solana ecosystem**
 
-This agent is designed to analyze Solana addresses and provide information about related accounts and their transaction counts. It retrieves data from the Solana blockchain without building any transactions.
+## 🎯 Overview
 
-## Features
+The **Solana Bubbles Agent** analyzes Solana wallet addresses to reveal networks of related accounts and their transaction volumes. Think of it as mapping the "bubbles" of activity around any Solana address - showing who's connected and how much value flows between them.
 
-- Validates Solana addresses
-- Retrieves related accounts that have interacted with the specified address
-- Provides transaction counts and types for each related account
-- Orders results by transaction frequency
-- Tracks SOL and token balance changes (inflow/outflow analysis)
+## ✨ Features
 
-## RPC Provider Setup
+- 🔍 **Relationship Discovery**: Find ALL accounts that have interacted with a given address
+- 💰 **Multi-Token Support**: Tracks SOL, USDC, USDT, ETH, JUP, BONK, and 10+ other major tokens
+- 🔄 **SOL Conversion**: All token volumes converted to SOL equivalent for easy comparison
+- ⚡ **Smart Caching**: 5-minute cache for lightning-fast repeated queries
+- 📊 **Volume Ranking**: Results sorted by total transaction volume
+- 🛡️ **Rate Limit Handling**: Optimized for Helius free tier and other RPC providers
 
-For optimal performance, this agent uses premium RPC providers. The agent supports:
+## 🚀 Quick Start
 
-### Helius (Recommended)
-1. Get a free API key from [https://helius.xyz/](https://helius.xyz/)
-2. Set the environment variable: `HELIUS_RPC_URL=https://rpc.helius.xyz/?api-key=YOUR_API_KEY`
-
-### Alternative Providers
-- **Ankr**: Used as fallback (no API key required)
-- **QuickNode**: Replace the RPC URL with your QuickNode endpoint
-- **Standard Solana RPC**: Fallback option (slower, rate-limited)
-
-## API Endpoints
-
-### Analyze Solana Address
-
-**Endpoint:** `/api/tools/solana-address-analysis`
-
-**Method:** `GET`
-
-**Query Parameters:**
-- `address` (string, required): The Solana address to analyze
-
-**Response:**
-Returns a JSON object containing:
-- `address`: The analyzed Solana address
-- `isValid`: Whether the address is valid
-- `totalTransactions`: Total number of transactions for this address
-- `sampledTransactions`: Number of transactions actually analyzed (subset of total)
-- `relatedAccounts`: List of related accounts ordered by transaction count
-  - `address`: The related account address
-  - `transactionCount`: Number of transactions with this account
-  - `lastInteraction`: ISO timestamp of last interaction
-  - `transactionTypes`: Types of transactions (e.g., 'SOL Inflow', 'SOL Outflow', 'Token Transfer')
-  - `totalSolFlow`: Total SOL amount involved in transactions
-  - `totalTokenInteractions`: Number of token-related interactions
-- `error`: Error message if analysis failed
-
-**Example Request:**
+### 1. Clone & Install
 ```bash
-curl "http://localhost:3000/api/tools/solana-address-analysis?address=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+git clone https://github.com/sainthiago/solana-bubbles-agent.git
+cd solana-bubbles-agent
+pnpm install
 ```
 
-**Example Response:**
+### 2. Configure RPC (Optional but Recommended)
+```bash
+# For Helius (recommended)
+echo "HELIUS_RPC_URL=https://rpc.helius.xyz/?api-key=YOUR_API_KEY" >> .env.local
+```
+
+### 3. Start the Agent
+```bash
+pnpm dev
+```
+
+### 4. Analyze an Address
+```bash
+curl "http://localhost:3000/api/tools/solana-address-analysis?address=5dmVDVM2orDq1ZetuVjedCdRjJGiVasjmqq2woAmyXGd"
+```
+
+## 🛠️ API Reference
+
+### Main Endpoint
+**`GET /api/tools/solana-address-analysis`**
+
+**Parameters:**
+- `address` (required): Solana address to analyze
+
+**Response:**
 ```json
 {
-  "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "address": "5dmVDVM2orDq1ZetuVjedCdRjJGiVasjmqq2woAmyXGd",
   "isValid": true,
-  "totalTransactions": 100,
-  "sampledTransactions": 25,
   "relatedAccounts": [
     {
-      "address": "SomeRelatedAddress123...",
-      "transactionCount": 45,
-      "lastInteraction": "2024-01-15T10:30:00.000Z",
-      "transactionTypes": ["SOL Inflow", "Token Transfer"],
-      "totalSolFlow": 1500000000,
-      "totalTokenInteractions": 12
+      "address": "HZeLxbZ9uHtSpwZC3LBr4Nubd14iHwz7bRSghRZf5VCG",
+      "totalSolVolume": "5.95 SOL"
+    },
+    {
+      "address": "ES7yhSrYeFo4U1PfJHNRkbfCWxCwPLk2DjrEbmN8bg58", 
+      "totalSolVolume": "2.48 SOL"
     }
   ]
 }
 ```
 
-## Dependencies
+### Cache Stats Endpoint
+**`GET /api/tools/solana-address-analysis?cache=stats`**
 
-- `@solana/web3.js`: For interacting with the Solana blockchain
-- `Next.js`: React framework for the API endpoints
-- `@bitte-ai/agent-sdk`: SDK for creating AI agents
-- Other dependencies as listed in `package.json`
+Monitor cache performance and see what's currently cached.
 
-## Getting Started
+## 🎨 Supported Tokens
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/BitteProtocol/agent-next-boilerplate.git
-   cd agent-next-boilerplate
-   ```
+The agent tracks these tokens and converts them to SOL equivalent:
 
-2. Install dependencies:
-   ```bash
-   pnpm install
-   ```
+| Token | Symbol | Conversion Rate |
+|-------|--------|----------------|
+| SOL | SOL | 1.0 SOL |
+| USDC | USDC | ~0.004 SOL |
+| USDT | USDT | ~0.004 SOL |
+| Ethereum | ETH | ~0.15 SOL |
+| Jupiter | JUP | ~0.0035 SOL |
+| Bonk | BONK | ~0.00000006 SOL |
+| And more... | | |
 
-3. (Optional) Set up premium RPC provider:
-   ```bash
-   # For Helius
-   echo "HELIUS_RPC_URL=https://rpc.helius.xyz/?api-key=YOUR_API_KEY" >> .env.local
-   
-   # Or for QuickNode
-   echo "HELIUS_RPC_URL=https://your-quicknode-endpoint.com" >> .env.local
-   ```
+*Rates are approximate and represent current market conditions*
 
-4. Start the development server:
-   ```bash
-   pnpm dev
-   ```
+## ⚡ Performance
 
-5. The agent will be available at `http://localhost:3000`
+### Cache Performance
+- **Cache Hit**: ~10ms response time ⚡
+- **Cache Miss**: 2-5 seconds (with Helius)
+- **Cache TTL**: 5 minutes for successful analyses
 
-6. Use the API endpoint to analyze Solana addresses:
-   ```bash
-   curl "http://localhost:3000/api/tools/solana-address-analysis?address=YOUR_SOLANA_ADDRESS"
-   ```
+### RPC Provider Performance
+- **Helius (Free)**: 2-5 seconds, optimized for individual requests
+- **Ankr (Fallback)**: 5-10 seconds
+- **Public Solana RPC**: 10-40 seconds (rate limited)
 
-## Performance Notes
+## 🔧 Configuration
 
-- **With Helius/Premium RPC**: ~3-5 seconds response time, higher rate limits
-- **With Ankr (fallback)**: ~5-10 seconds response time  
-- **With free Solana RPC**: ~10-40 seconds due to rate limiting
+### Environment Variables
+```bash
+HELIUS_RPC_URL=https://rpc.helius.xyz/?api-key=YOUR_API_KEY  # Optional but recommended
+NEXT_PUBLIC_BASE_URL=https://your-domain.com                # For production
+```
 
-The agent automatically uses the best available RPC provider and adjusts batch sizes and delays accordingly.
+### RPC Providers
+1. **Helius** (Recommended): Get free API key at [helius.xyz](https://helius.xyz/)
+2. **QuickNode**: Premium option with higher rate limits
+3. **Ankr**: Free fallback, decent performance
+4. **Public Solana RPC**: Slowest but always available
 
-## License
+## 🧠 How It Works
 
-This project is licensed under the MIT License.
-# solana-bubbles-agent
-# solana-bubbles-agent
+1. **Address Validation**: Ensures the input is a valid Solana address
+2. **Transaction Retrieval**: Fetches recent transaction history
+3. **Relationship Mapping**: Analyzes each transaction to find connected accounts
+4. **Volume Calculation**: 
+   - Tracks SOL balance changes
+   - Identifies token transfers and converts to SOL equivalent
+   - Accumulates total volume per related account
+5. **Smart Sorting**: Orders results by total volume (highest first)
+6. **Caching**: Stores results for fast repeated queries
+
+## 🔍 Use Cases
+
+- **Portfolio Analysis**: See who your wallet has interacted with most
+- **DeFi Mapping**: Discover related protocols and liquidity pools
+- **Security Research**: Identify suspicious account relationships
+- **Market Research**: Understand fund flows and connections
+- **Trading Intelligence**: Find accounts with similar activity patterns
+
+## 🛡️ Rate Limiting & Optimization
+
+The agent is optimized for different RPC providers:
+
+- **Helius Free**: 3 transactions per batch, 2s delays, individual requests
+- **Other RPCs**: 5 transactions per batch, 1s delays, batch requests
+- **Error Handling**: Exponential backoff for rate limits
+- **Fallback Chain**: Helius → Ankr → Public RPC
+
+## 📊 Cache Statistics
+
+Monitor your cache performance:
+```bash
+curl "http://localhost:3000/api/tools/solana-address-analysis?cache=stats"
+```
+
+## 🚀 Deployment
+
+### Vercel (Recommended)
+```bash
+vercel --prod
+```
+
+### Docker
+```bash
+docker build -t solana-bubbles-agent .
+docker run -p 3000:3000 solana-bubbles-agent
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+---
+
+**Built with ❤️ for the Solana ecosystem**
+
+*Discover the bubbles, map the connections, understand the flow.* 🫧✨
