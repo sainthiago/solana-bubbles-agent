@@ -128,5 +128,5 @@ The agent automatically uses the best available RPC provider and adjusts batch s
 ## License
 
 This project is licensed under the MIT License.
-# solana-wallet-tracker-agent
-# solana-wallet-tracker-agent
+# solana-bubbles-agent
+# solana-bubbles-agent

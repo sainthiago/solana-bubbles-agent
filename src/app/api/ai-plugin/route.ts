@@ -11,19 +11,19 @@ export async function GET() {
         },
         servers: [
             {
-                url: "https://solana-wallet-tracker-agent.vercel.app/"
+                url: "https://solana-bubbles-agent.vercel.app/"
             }
         ],
         "x-mb": {
             "account-id": ACCOUNT_ID,
             email: "ruisantiagomr@gmail.com",
             assistant: {
-                name: "SOL Wallet Tracker",
+                name: "Solana Bubbles Agent",
                 description: "This agent analyzes Solana wallet addresses to find all related accounts and their SOL transaction volumes.",
                 instructions: "When given a Solana wallet address, use the analysis tool to find all related accounts that have interacted with it and show their total SOL volume.",
                 tools: [{ "type": "submit-query" }],
-                image: "https://solana-wallet-tracker-agent.vercel.app/solana.png",
-                repo: "https://github.com/sainthiago/solana-wallet-tracker-agent",
+                image: "https://solana-bubbles-agent.vercel.app/bubble.svg",
+                repo: "https://github.com/sainthiago/solana-bubbles-agent",
                 categories: ["solana", "wallet", "tracker", "agent"],
                 chainIds: [900]
             }
